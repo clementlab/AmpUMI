@@ -96,11 +96,20 @@ def dedupUMIs(args,parser):
                 # strip padding from qual array conversion and seq
                 t_seq = trimmed_seq.rstrip('\n')
                 t_qual = trimmed_qual.rstrip("\n")
+                
+                q1 = np.fromstring(t_qual, dtype=np.uint8)
                 if paired_end:
-                    trimmed_qual_sum = np.sum(np.fromstring(t_qual,dtype=np.uint8)) + np.sum(np.fromstring(qual_line2.rstrip("\n"),dtype=np.uint8))
+                    q2 = np.fromstring(qual_line2.rstrip("\n"), dtype=np.uint8)
+                    qual_val = np.sum(q1) + np.sum(q2)
+                    if not getattr(args, 'use_sum_quality', False) and (len(q1) + len(q2)) > 0:
+                        qual_val = qual_val / float(len(q1) + len(q2))
+                    trimmed_qual_sum = qual_val
                     this_key = this_UMI + " # " + t_seq + " # " + seq_line2.rstrip('\n')
                 else:
-                    trimmed_qual_sum = np.sum(np.fromstring(t_qual,dtype=np.uint8))
+                    qual_val = np.sum(q1)
+                    if not getattr(args, 'use_sum_quality', False) and len(q1) > 0:
+                        qual_val = qual_val / float(len(q1))
+                    trimmed_qual_sum = qual_val
                     this_key = this_UMI + " # " + t_seq
 
                 if this_key not in umi_seq_counts:
@@ -420,6 +429,7 @@ def main():
         parser_run.add_argument('--min_umi_to_keep',help='The minimum times a UMI must be seen to be kept',type=int,default=0)
         parser_run.add_argument('--write_UMI_counts',help='Flag to write counts of each UMI to a file',action='store_true')
         parser_run.add_argument('--write_alleles_with_multiple_UMIs',help='Flag to write alleles with multiple UMIs to a file',action='store_true')
+        parser_run.add_argument('--use_sum_quality', help='Use sum quality instead of mean quality to choose the best read/pair', action='store_true')
         parser_run.set_defaults(func=dedupUMIs)
 
         #CALCULATE COLLISION
