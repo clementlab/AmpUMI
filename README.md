@@ -14,7 +14,7 @@ The repository has been migrated and is now actively maintained by the Clement L
 ## Installation:
 AmpUMI requires the sympy, mpmath, and numpy packages, and can be installed using the command:
 ```
-pip install git+https://github.com/pinellolab/AmpUMI.git
+pip install git+https://github.com/clementlab/AmpUMI.git
 ```
 
 This will install the AmpUMI program which can be accessed by running `AmpUMI`. 
@@ -163,20 +163,31 @@ The process mode is used to process amplicon sequencing libraries containing UMI
 
 AmpUMI Process is run with the following parameters:
 *  ```--fastq``` Path to the fastq to be processed
+*  ```--fastq2``` Path to read 2 fastq (optional, for paired-end)
 *  ```--fastq_out``` Path to the trimmed fastq to be written
+*  ```--fastq_out2``` Path to write read 2 fastq (optional, for paired-end)
 *  ```--umi_regex``` Regular expression specifying the umi (I) as well as any primer sequences to be trimmed (A,C,T,G).
-*  ```--min_umi_to_keep``` The minimum times a UMI must be seen to be keep (default=0)
+*  ```--min_umi_to_keep``` The minimum number of times a UMI must be seen to be kept (default=0)
 *  ```--write_UMI_counts``` Flag to write counts of each UMI to a file
 *  ```--write_alleles_with_multiple_UMIs``` Flag to write alleles with multiple UMIs to a file
+*  ```--truncate_length``` Truncate sequences to this length before deduplication matching (useful if reads have been pre-trimmed). Set to 0 to deduplicate based on UMI only without comparing sequences.
+*  ```--use_sum_quality``` Use sum quality instead of mean quality to choose the best read/pair
 
 
 AmpUMI Process mode will parse and trim the UMI and any specified adapter from each read. Next, for each UMI-sequence pair, the highest-quality sequence will be kept. Next, error correction will be performed in two steps: 1) for each UMI, the most prevalent sequence will be kept, and other less-frequent sequences will be discarded. Thus, if there are sequencing errors in the read, these will be filtered out. 2) (optional) each UMI is printed only if it was seen at least ```--min_umi_to_print``` times. This is good for filtering sequencing errors that may affect the UMI sequence. In this case, UMIs with few reads may be the result of sequencing errors in those UMIs. Finally, duplicate reads are removed. For each UMI, only one read is printed to the final output, removing PCR duplicates. 
 
 For example, if the UMI is the first 5 basepairs of a read, and the UMI consists of any possible base combination, the following command should be used:
 ```
-AmpUMI --fastq input.fastq --fastq_out input.fastq.dedup.fastq --umi_regex "^IIIII"
+AmpUMI Process --fastq input.fastq --fastq_out input.fastq.dedup.fastq --umi_regex "^IIIII"
 ```
-In this example, the *^* symbol anchors the UMI match to the beginning of the read, and the next 5bp are the UMI. 
+In this example, the `^` symbol anchors the UMI match to the beginning of the read, and the next 5bp are the UMI. 
+
+AmpUMI also dynamically supports paired-end reads (R1 and R2). To deduplicate paired-end reads, the UMI must be located in R1. AmpUMI will safely deduplicate the pairs based on the UMI extracted from R1, and the exact sequence matches of **both** R1 and R2. 
+To process paired-end reads efficiently, provide the R2 input fastq and its intended output destination using the `--fastq2` and `--fastq_out2` parameters:
+```bash
+AmpUMI Process --fastq input.R1.fastq --fastq2 input.R2.fastq --fastq_out dedup.R1.fastq --fastq_out2 dedup.R2.fastq --umi_regex "^IIIII"
+```
+*(Note: when deduplicating sequences of differing lengths, you can pass `--truncate_length N` to prevent false UMI collisions by restricting AmpUMI to clustering based only on the first N bases. By default, AmpUMI chooses the "best" read to output based on the highest average quality score. To revert to legacy behavior which solely summed all scores, you can use `--use_sum_quality`)*.
 
 If the last 5bp of each read were the UMI, this could be specified using the flag
 ```--umi_regex "IIIII$```
@@ -197,7 +208,7 @@ post-AmpUMI:                   TATATATAT (UMI: AAAAA)
 pre-AmpUMI:  TACCTGATATAACCTGGAGAGAG
 post-AmpUMI:                 GAGAGAG (UMI: ATATA)
 ```
-The ```--min_umi_to_print``` parameter sets the requirement for the minimum number of reads that must be seen for a particular UMI for it to be printed. Setting this parameter will discard UMI-read pairs that occur less than a specified number of times. This can remove spurious UMIs or reads that arise from sequencing error and only appear infrequently as opposed to the more common variants that arise from source biological material.
+The ```--min_umi_to_keep``` parameter sets the requirement for the minimum number of reads that must be seen for a particular UMI for it to be printed. Setting this parameter will discard UMI-read pairs that occur less than a specified number of times. This can remove spurious UMIs or reads that arise from sequencing error and only appear infrequently as opposed to the more common variants that arise from source biological material.
 
 Setting the ```--write_UMI_counts``` flag writes the number of times each UMI appeared in the sample. If a few barcodes dominate the pool, there may have been a problem with the original UMI pool or with the library construction or amplification process. 
 
