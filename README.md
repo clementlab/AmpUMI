@@ -182,16 +182,16 @@ AmpUMI Process --fastq input.fastq --fastq_out input.fastq.dedup.fastq --umi_reg
 ```
 In this example, the `^` symbol anchors the UMI match to the beginning of the read, and the next 5bp are the UMI. 
 
+If the last 5bp of each read were the UMI, this could be specified using the flag
+```--umi_regex "IIIII$```
+where the *$* symbol anchors the UMI match to the end of the read. 
+
 AmpUMI also dynamically supports paired-end reads (R1 and R2). To deduplicate paired-end reads, the UMI must be located in R1. AmpUMI will safely deduplicate the pairs based on the UMI extracted from R1, and the exact sequence matches of **both** R1 and R2. 
 To process paired-end reads efficiently, provide the R2 input fastq and its intended output destination using the `--fastq2` and `--fastq_out2` parameters:
 ```bash
 AmpUMI Process --fastq input.R1.fastq --fastq2 input.R2.fastq --fastq_out dedup.R1.fastq --fastq_out2 dedup.R2.fastq --umi_regex "^IIIII"
 ```
 *(Note: when deduplicating sequences of differing lengths, you can pass `--truncate_length N` to prevent false UMI collisions by restricting AmpUMI to clustering based only on the first N bases. By default, AmpUMI chooses the "best" read to output based on the highest average quality score. To revert to legacy behavior which solely summed all scores, you can use `--use_sum_quality`)*.
-
-If the last 5bp of each read were the UMI, this could be specified using the flag
-```--umi_regex "IIIII$```
-where the *$* symbol anchors the UMI match to the end of the read. 
 
 [Ambiguous characters](https://www.bioinformatics.org/sms/iupac.html) can be used to specify UMI locations as well. 
 
