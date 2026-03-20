@@ -4,6 +4,12 @@
 AmpUMI is a toolkit for the design and analysis of amplicon sequencing experiments utilizing unique molecular identifiers (UMIs). 
 
 For details, please see our publication at https://doi.org/10.1093/bioinformatics/bty264.
+
+This project was originally developed in the Pinello Lab:
+https://github.com/pinellolab/AmpUMI
+
+The repository has been migrated and is now actively maintained by the Clement Lab, where new features and development will continue.
+
 <br clear='left'/>
 ## Installation:
 AmpUMI requires the sympy, mpmath, and numpy packages, and can be installed using the command:
