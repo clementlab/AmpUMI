@@ -9,7 +9,6 @@ This project was originally developed in the Pinello Lab:
 https://github.com/pinellolab/AmpUMI
 
 The repository has been migrated and is now actively maintained by the Clement Lab, where new features and development will continue.
-
 <br clear='left'/>
 
 ## Installation:
