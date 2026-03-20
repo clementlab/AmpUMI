@@ -11,6 +11,7 @@ https://github.com/pinellolab/AmpUMI
 The repository has been migrated and is now actively maintained by the Clement Lab, where new features and development will continue.
 
 <br clear='left'/>
+
 ## Installation:
 AmpUMI requires the sympy, mpmath, and numpy packages, and can be installed using the command:
 ```
