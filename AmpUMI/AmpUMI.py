@@ -97,9 +97,9 @@ def dedupUMIs(args,parser):
                 t_seq = trimmed_seq.rstrip('\n')
                 t_qual = trimmed_qual.rstrip("\n")
                 
-                q1 = np.fromstring(t_qual, dtype=np.uint8)
+                q1 = np.frombuffer(t_qual.encode('utf-8'), dtype=np.uint8)
                 if paired_end:
-                    q2 = np.fromstring(qual_line2.rstrip("\n"), dtype=np.uint8)
+                    q2 = np.frombuffer(qual_line2.rstrip("\n").encode('utf-8'), dtype=np.uint8)
                     qual_val = np.sum(q1) + np.sum(q2)
                     if not getattr(args, 'use_sum_quality', False) and (len(q1) + len(q2)) > 0:
                         qual_val = qual_val / float(len(q1) + len(q2))
