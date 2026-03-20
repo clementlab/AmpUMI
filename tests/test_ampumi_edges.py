@@ -127,6 +127,48 @@ class TestAmpUMISimulated(unittest.TestCase):
         res = self.run_ampumi('--fastq', self.r1, '--fastq_out', self.out1, '--umi_regex', '^IIIIIIII', '--use_sum_quality')
         self.assertEqual(res.returncode, 0)
         self.assertIn("Printed 1 deduplicated sequences", res.stdout)
+        
+    def test_truncate_length_varying_reads(self):
+        # Two reads with same first 10 bp, but one is shorter due to trimming
+        reads = [
+            {'id':'@Read1', 'seq':'AAAAAAAAACGTACGT', 'qual':'IIIIIIIIIIIIIIII'}, # 16bp seq
+            {'id':'@Read2', 'seq':'AAAAAAAAACGTAC', 'qual':'IIIIIIIIIIIIII'}     # 14bp seq
+        ]
+        write_fastq(self.r1, reads)
+        # Without truncate_length, exact match fails, leading to a UMI collision (1 kept, 1 dropped = 1 printed)
+        res1 = self.run_ampumi('--fastq', self.r1, '--fastq_out', self.out1, '--umi_regex', '^IIIIIIII')
+        self.assertIn("WARNING: Reads of varying lengths were detected", res1.stdout)
+        self.assertIn("Observed 1 UMI collisions", res1.stdout)
+        self.assertIn("Printed 1 deduplicated sequences", res1.stdout)
+        
+        # With truncate_length=6, the 8bp and 6bp trimmed sequences match exactly and deduplicate into 1 common read
+        res2 = self.run_ampumi('--fastq', self.r1, '--fastq_out', self.out1, '--umi_regex', '^IIIIIIII', '--truncate_length', '6')
+        self.assertNotIn("WARNING: Reads of varying lengths were detected", res2.stdout)
+        self.assertIn("Observed 0 UMI collisions", res2.stdout)
+        self.assertIn("Printed 1 deduplicated sequences", res2.stdout)
+
+    def test_truncate_length_paired_end(self):
+        # Paired reads: R1 is exact, R2 is differently trimmed
+        r1_reads = [
+            {'id':'@R1_1', 'seq':'AAAAAAAAACGTACGT', 'qual':'IIIIIIIIIIIIIIII'},
+            {'id':'@R1_2', 'seq':'AAAAAAAAACGTACGT', 'qual':'IIIIIIIIIIIIIIII'}
+        ]
+        r2_reads = [
+            {'id':'@R1_1', 'seq':'GATCGATCGATC', 'qual':'IIIIIIIIIIII'}, # 12bp R2
+            {'id':'@R1_2', 'seq':'GATCGATCGA',   'qual':'IIIIIIIIII'}   # 10bp R2
+        ]
+        write_fastq(self.r1, r1_reads)
+        write_fastq(self.r2, r2_reads)
+        
+        # Without truncate, sequences differ, causing a collision
+        res1 = self.run_ampumi('--fastq', self.r1, '--fastq2', self.r2, '--fastq_out', self.out1, '--fastq_out2', self.out2, '--umi_regex', '^IIIIIIII')
+        self.assertIn("Observed 1 UMI collisions", res1.stdout)
+        self.assertIn("Printed 1 deduplicated sequences", res1.stdout)
+        
+        # With truncate=10, they match exactly, preventing the collision
+        res2 = self.run_ampumi('--fastq', self.r1, '--fastq2', self.r2, '--fastq_out', self.out1, '--fastq_out2', self.out2, '--umi_regex', '^IIIIIIII', '--truncate_length', '10')
+        self.assertIn("Observed 0 UMI collisions", res2.stdout)
+        self.assertIn("Printed 1 deduplicated sequences", res2.stdout)
 
 if __name__ == '__main__':
     unittest.main()

@@ -47,14 +47,12 @@ def dedupUMIs(args,parser):
     printed_count = 0
     count_with_regex = 0
 
-    umi_keys_with_most_counts = {} #umi->key (key has most counts)
-    umi_key_counts = {} #umi->count (count of fastqs key has seen) 
-
-    umi_seq_counts = {} #umi_seq->count of that pair
-    umi_seq_best_qual_fastqs = {} #umi_seq->fastq to be printed
-    umi_seq_best_qual_sum = {} #best qual sum for the best fastq
+    umi_data = {} # umi -> [count, key_with_most_counts]
+    umi_seq_data = {} # umi_seq -> [count, best_qual_sum, best_fastq_tuple_or_string]
     total_r1_len = 0
     total_r2_len = 0
+    observed_r1_lengths = set()
+    observed_r2_lengths = set()
 
     with open (args.fastq,"r") as f_in:
         f_in2 = open(args.fastq2, "r") if paired_end else None
@@ -96,47 +94,54 @@ def dedupUMIs(args,parser):
                 # strip padding from qual array conversion and seq
                 t_seq = trimmed_seq.rstrip('\n')
                 t_qual = trimmed_qual.rstrip("\n")
+                observed_r1_lengths.add(len(t_seq))
+                match_seq1 = t_seq[:args.truncate_length] if getattr(args, 'truncate_length', None) is not None else t_seq
                 
-                q1 = np.frombuffer(t_qual.encode('utf-8'), dtype=np.uint8)
+                # Convert string qualities to bytes for fast summing
+                qb1 = bytearray(t_qual, 'utf-8') if sys.version_info[0] < 3 else t_qual.encode('utf-8')
+                
                 if paired_end:
-                    q2 = np.frombuffer(qual_line2.rstrip("\n").encode('utf-8'), dtype=np.uint8)
-                    qual_val = np.sum(q1) + np.sum(q2)
-                    if not getattr(args, 'use_sum_quality', False) and (len(q1) + len(q2)) > 0:
-                        qual_val = qual_val / float(len(q1) + len(q2))
+                    r2_seq = seq_line2.rstrip('\n')
+                    observed_r2_lengths.add(len(r2_seq))
+                    match_seq2 = r2_seq[:args.truncate_length] if getattr(args, 'truncate_length', None) is not None else r2_seq
+                    
+                    t_qual2 = qual_line2.rstrip("\n")
+                    qb2 = bytearray(t_qual2, 'utf-8') if sys.version_info[0] < 3 else t_qual2.encode('utf-8')
+                    qual_val = sum(qb1) + sum(qb2)
+                    if not getattr(args, 'use_sum_quality', False) and (len(qb1) + len(qb2)) > 0:
+                        qual_val = qual_val / float(len(qb1) + len(qb2))
                     trimmed_qual_sum = qual_val
-                    this_key = this_UMI + " # " + t_seq + " # " + seq_line2.rstrip('\n')
+                    this_key = this_UMI + " # " + match_seq1 + " # " + match_seq2
                 else:
-                    qual_val = np.sum(q1)
-                    if not getattr(args, 'use_sum_quality', False) and len(q1) > 0:
-                        qual_val = qual_val / float(len(q1))
+                    qual_val = sum(qb1)
+                    if not getattr(args, 'use_sum_quality', False) and len(qb1) > 0:
+                        qual_val = qual_val / float(len(qb1))
                     trimmed_qual_sum = qual_val
-                    this_key = this_UMI + " # " + t_seq
+                    this_key = this_UMI + " # " + match_seq1
 
-                if this_key not in umi_seq_counts:
-                    umi_seq_counts[this_key] = 1
-                    umi_seq_best_qual_sum[this_key] = trimmed_qual_sum
-                    if paired_end:
-                        umi_seq_best_qual_fastqs[this_key] = (id_line + trimmed_seq + plus_line + trimmed_qual, id_line2 + seq_line2 + plus_line2 + qual_line2)
-                    else:
-                        umi_seq_best_qual_fastqs[this_key] = id_line + trimmed_seq + plus_line + trimmed_qual
+                if paired_end:
+                    fastq_data = (id_line + trimmed_seq + plus_line + trimmed_qual, id_line2 + seq_line2 + plus_line2 + qual_line2)
                 else:
-                    umi_seq_counts[this_key] += 1
+                    fastq_data = id_line + trimmed_seq + plus_line + trimmed_qual
+
+                if this_key not in umi_seq_data:
+                    umi_seq_data[this_key] = [1, trimmed_qual_sum, fastq_data]
+                else:
+                    us_dat = umi_seq_data[this_key]
+                    us_dat[0] += 1
                     #if this sequence has the highest quality, store it
-                    if umi_seq_best_qual_sum[this_key] < trimmed_qual_sum:
-                        umi_seq_best_qual_sum[this_key] = trimmed_qual_sum
-                        if paired_end:
-                            umi_seq_best_qual_fastqs[this_key] = (id_line + trimmed_seq + plus_line + trimmed_qual, id_line2 + seq_line2 + plus_line2 + qual_line2)
-                        else:
-                            umi_seq_best_qual_fastqs[this_key] = id_line + trimmed_seq + plus_line + trimmed_qual
+                    if us_dat[1] < trimmed_qual_sum:
+                        us_dat[1] = trimmed_qual_sum
+                        us_dat[2] = fastq_data
 
-                if this_UMI not in umi_key_counts:
-                    umi_key_counts[this_UMI] = 1
-                    umi_keys_with_most_counts[this_UMI] = this_key
+                if this_UMI not in umi_data:
+                    umi_data[this_UMI] = [1, this_key]
                 else:
-                    umi_key_counts[this_UMI] += 1
+                    u_dat = umi_data[this_UMI]
+                    u_dat[0] += 1
                     #if this sequence is the most seen for this UMI, store it
-                    if umi_seq_counts[this_key] > umi_seq_counts[umi_keys_with_most_counts[this_UMI]]:
-                        umi_keys_with_most_counts[this_UMI] = this_key
+                    if umi_seq_data[this_key][0] > umi_seq_data[u_dat[1]][0]:
+                        u_dat[1] = this_key
 
     if paired_end and f_in2: f_in2.close()
 
@@ -146,7 +151,7 @@ def dedupUMIs(args,parser):
     print("Read " + str(read_count) + " reads from " + args.fastq)
     print("Of those, " + str(count_with_regex) + " had the regex")
 
-    umi_list = sorted(umi_key_counts, key=lambda k: umi_key_counts[k])
+    umi_list = sorted(umi_data.keys(), key=lambda k: umi_data[k][0])
     umi_count = len(umi_list)
 #    print("umi_list: " + str(umi_list))
 
@@ -167,39 +172,41 @@ def dedupUMIs(args,parser):
     too_few_reads_count_reads = 0
     printed_count = 0
     printed_count_reads = 0
-    for umi_seq in umi_seq_counts:
+    for umi_seq, us_dat in umi_seq_data.items():
+        count, best_qual, fastq_data = us_dat
         parts = umi_seq.split(" # ")
         umi = parts[0]
         seq_str = " # ".join(parts[1:])
+        u_dat = umi_data[umi]
         
         #if another umi had more reads than ths one...
-        if umi_keys_with_most_counts[umi] != umi_seq:
+        if u_dat[1] != umi_seq:
             collision_count += 1
-            collision_count_reads += umi_seq_counts[umi_seq]
+            collision_count_reads += count
             if (args.write_alleles_with_multiple_UMIs):
-                other_key = umi_keys_with_most_counts[umi]
+                other_key = u_dat[1]
                 other_parts = other_key.split(" # ")
                 other_umi = other_parts[0]
                 other_seq_str = " # ".join(other_parts[1:])
-                f_out_multiUMI.write('k\t' + str(umi_seq_counts[other_key]) + "\t" + other_umi + "\t" + other_seq_str + "\n")
-                f_out_multiUMI.write("d\t" + str(umi_seq_counts[umi_seq])+"\t" + umi + "\t" + seq_str + "\n")
+                f_out_multiUMI.write('k\t' + str(umi_seq_data[other_key][0]) + "\t" + other_umi + "\t" + other_seq_str + "\n")
+                f_out_multiUMI.write("d\t" + str(count)+"\t" + umi + "\t" + seq_str + "\n")
         #if this umi had too few reads
-        elif umi_seq_counts[umi_seq] < args.min_umi_to_keep:
+        elif count < args.min_umi_to_keep:
             too_few_reads_count += 1
-            too_few_reads_count_reads += umi_seq_counts[umi_seq]
+            too_few_reads_count_reads += count
         else:
             if paired_end:
-                r1_str, r2_str = umi_seq_best_qual_fastqs[umi_seq]
+                r1_str, r2_str = fastq_data
                 f_out.write(r1_str)
                 f_out2.write(r2_str)
                 total_r1_len += len(r1_str.split('\n')[1])
                 total_r2_len += len(r2_str.split('\n')[1])
             else:
-                r1_str = umi_seq_best_qual_fastqs[umi_seq]
+                r1_str = fastq_data
                 f_out.write(r1_str)
                 total_r1_len += len(r1_str.split('\n')[1])
             printed_count += 1
-            printed_count_reads += umi_seq_counts[umi_seq]
+            printed_count_reads += count
 
     f_out.close()
     if paired_end: f_out2.close()
@@ -215,12 +222,22 @@ def dedupUMIs(args,parser):
             print("Average length of deduplicated R1: %.2f bps, R2: %.2f bps" % (avg_r1, avg_r2))
         else:
             print("Average length of deduplicated R1: %.2f bps" % (avg_r1))
+            
+    if (len(observed_r1_lengths) > 1 or (paired_end and len(observed_r2_lengths) > 1)) and not getattr(args, 'truncate_length', None):
+        print("\n" + "*"*80)
+        print("WARNING: Reads of varying lengths were detected in the input FASTQ.")
+        print("Because AmpUMI deduplicates based on exact sequence matches, if quality")
+        print("trimming has already been performed, differently-trimmed versions of the")
+        print("same original molecule will be incorrectly labeled as UMI collisions.")
+        print("To fix this, run AmpUMI *before* read trimming, or use the --truncate_length")
+        print("argument to cluster reads based only on their first N bases.")
+        print("*"*80 + "\n")
 
     if (args.write_UMI_counts):
         f_out_ampUMI = open(args.fastq_out+".AmpUMI.out","w")
         f_out_ampUMI.write('UMI\tCount\n')
-        for umi in sorted(umi_key_counts):
-            f_out_ampUMI.write(umi + "\t" + str(umi_key_counts[umi]) + "\n")
+        for umi in sorted(umi_data.keys()):
+            f_out_ampUMI.write(umi + "\t" + str(umi_data[umi][0]) + "\n")
         print('Wrote UMI counts to ' + args.fastq_out+'.AmpUMI.out')
 
     if (args.write_alleles_with_multiple_UMIs):
@@ -430,6 +447,7 @@ def main():
         parser_run.add_argument('--write_UMI_counts',help='Flag to write counts of each UMI to a file',action='store_true')
         parser_run.add_argument('--write_alleles_with_multiple_UMIs',help='Flag to write alleles with multiple UMIs to a file',action='store_true')
         parser_run.add_argument('--use_sum_quality', help='Use sum quality instead of mean quality to choose the best read/pair', action='store_true')
+        parser_run.add_argument('--truncate_length', type=int, help='Truncate sequences to this length before deduplication matching (useful if reads have been pre-trimmed). Set to 0 to deduplicate based on UMI only without comparing sequences.')
         parser_run.set_defaults(func=dedupUMIs)
 
         #CALCULATE COLLISION
